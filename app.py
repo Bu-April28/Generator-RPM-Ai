@@ -1,139 +1,123 @@
 import streamlit as st
 import pandas as pd
 from docx import Document
+from docx.shared import Inches
 from io import BytesIO
-import datetime
+import google.generativeai as genai
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
 
-# --- KONFIGURASI HALAMAN ---
-st.set_page_config(page_title="AI RPM Generator", layout="wide")
+# --- KONFIGURASI API AI (Gunakan API Key Anda) ---
+# Anda bisa mendapatkan API Key gratis di https://aistudio.google.com/
+os_api_key = st.sidebar.text_input("Masukkan Google API Key:", type="password")
+if os_api_key:
+    genai.configure(api_key=os_api_key)
 
-# --- HEADER & LOGO ---
-st.title("🤖 AI Generator Rencana Pembelajaran Mendalam (RPM)")
-uploaded_logo = st.file_uploader("Unggah Logo Sekolah (JPG/PNG)", type=["jpg", "png", "jpeg"])
+st.set_page_config(page_title="AI RPM Generator Pro", layout="wide")
 
-if uploaded_logo:
-    st.image(uploaded_logo, width=100)
+# --- UI HEADER ---
+st.title("🚀 AI Generator Rencana Pembelajaran Mendalam (RPM)")
+st.caption("Edisi Lengkap: Identifikasi, Desain, Pengalaman Belajar, & Asesmen")
 
-# --- INPUT FORM ---
-with st.form("form_rpm"):
-    st.header("📋 Format Input Data")
+# --- INPUT DATA ---
+with st.sidebar:
+    st.header("Informasi Sekolah & Guru")
+    logo = st.file_uploader("Upload Logo Sekolah", type=['png', 'jpg', 'jpeg'])
+    unit = st.text_input("Nama Satuan Pendidikan")
+    guru = st.text_input("Nama Guru")
+    nip_g = st.text_input("NIP Guru")
+    kepsek = st.text_input("Nama Kepala Sekolah")
+    nip_k = st.text_input("NIP Kepala Sekolah")
+    tgl_cetak = st.text_input("Tempat, Tanggal Pembuatan", value="Jakarta, 20 Mei 2024")
+
+col1, col2 = st.columns(2)
+with col1:
+    jenjang = st.selectbox("Jenjang", ["SD", "SMP", "SMA"])
+    fase = st.selectbox("Fase", ["A", "B", "C", "D", "E", "F"])
+    kelas = st.text_input("Kelas")
+    semester = st.radio("Semester", ["Ganjil", "Genap"])
+    mapel = st.text_input("Mata Pelajaran")
+    materi = st.text_area("Materi Pokok")
+    jml_temu = st.number_input("Jumlah Pertemuan", min_value=1)
+    alokasi = st.text_input("Alokasi Waktu")
+
+with col2:
+    cp = st.text_area("Capaian Pembelajaran (Fase/Elemen)")
+    tujuan_awal = st.text_area("Tujuan Pembelajaran (Draft)")
+    dimensi = st.multiselect("Dimensi Profil Lulusan", 
+        ["Keimanan dan ketaqwaan", "Kewargaan", "Penalaran kritis", "Kreativitas", "Kolaborasi", "Kemandirian", "Kesehatan", "Komunikasi"])
+    pedagogis = st.text_input("Model Pembelajaran (PBL/PjBL/Discovery/dll)")
+    sarpras = st.text_area("Sarana Prasarana")
+
+# --- LOGIKA GENERATOR AI ---
+def panggil_ai(prompt):
+    if not os_api_key:
+        return "Silakan masukkan API Key di sidebar untuk mengaktifkan AI."
+    model = genai.GenerativeModel('gemini-pro')
+    response = model.generate_content(prompt)
+    return response.text
+
+if st.button("✨ Generate RPM Lengkap sekarang"):
+    with st.spinner("AI sedang berpikir menyusun rencana pembelajaran mendalam..."):
+        
+        prompt_utama = f"""
+        Buatkan Rencana Pembelajaran Mendalam (RPM) lengkap untuk:
+        Mapel: {mapel}, Materi: {materi}, Kelas: {kelas}, Jenjang: {jenjang}, Fase: {fase}.
+        Model: {pedagogis}. Jml Pertemuan: {jml_temu}.
+        
+        Output harus 4 bagian:
+        1. IDENTIFIKASI: Analisis aspek kognitif, sikap, keterampilan siswa dan Dimensi: {dimensi}.
+        2. DESAIN: Ubah tujuan '{tujuan_awal}' menjadi format ABCD. Detailkan Disiplin Ilmu, Lingkungan, Kemitraan, Digital.
+        3. PENGALAMAN BELAJAR: Buat detail per pertemuan (1-{jml_temu}). Tiap pertemuan ada:
+           - Kegiatan Awal (Pemantik, Bermakna, Menyenangkan)
+           - Kegiatan Inti (Sesuai Sintak Model {pedagogis})
+           - Refleksi & Penutup.
+        4. ASESMEN: Buat instrumen Diagnostik, Formatif (Rubrik Observasi), dan Sumatif (Tugas/Produk) secara rinci.
+        
+        Gunakan bahasa Indonesia yang formal dan profesional.
+        """
+        
+        hasil_ai = panggil_ai(prompt_utama)
+        st.session_state['hasil_rpm'] = hasil_ai
+        st.markdown(hasil_ai)
+
+# --- FITUR DOWNLOAD ---
+if 'hasil_rpm' in st.session_state:
     
-    col1, col2 = st.columns(2)
-    with col1:
-        satuan_pendidikan = st.text_input("Nama Satuan Pendidikan")
-        nama_guru = st.text_input("Nama Guru")
-        nip_guru = st.text_input("NIP Guru")
-        nama_kepsek = st.text_input("Nama Kepala Sekolah")
-        jenjang = st.selectbox("Jenjang Pendidikan", ["SD", "SMP", "SMA"])
-        fase = st.selectbox("Fase", ["A", "B", "C", "D", "E", "F"])
-        kelas = st.text_input("Kelas")
-        semester = st.radio("Semester", ["Ganjil", "Genap"])
-        mapel = st.text_input("Mata Pelajaran")
-        materi = st.text_area("Materi Pelajaran")
+    def buat_docx():
+        doc = Document()
+        if logo:
+            doc.add_picture(logo, width=Inches(1))
         
-    with col2:
-        cp_fase = st.text_area("CP Per Fase")
-        cp_elemen = st.text_area("CP Per Elemen")
-        jml_pertemuan = st.number_input("Jumlah Pertemuan (Angka)", min_value=1, step=1)
-        alokasi_waktu = st.text_input("Alokasi Waktu (Misal: 2x45 Menit)")
+        doc.add_heading(f'RENCANA PEMBELAJARAN MENDALAM - {unit}', 0)
         
-        st.write("**Praktik Pedagogis**")
-        pendekatan = st.text_input("Pendekatan Pembelajaran")
-        model_pemb = st.text_input("Model Pembelajaran (Misal: PjBL, PBL, Discovery)")
-        metode = st.text_input("Metode")
-        teknik = st.text_input("Teknik")
+        # Tabel Identitas
+        table = doc.add_table(rows=5, cols=2)
+        table.cell(0,0).text = "Mata Pelajaran"
+        table.cell(0,1).text = f": {mapel}"
+        table.cell(1,0).text = "Kelas/Semester"
+        table.cell(1,1).text = f": {kelas} / {semester}"
+        # ... tambahkan baris lain
         
-        dimensi = st.multiselect("Dimensi Lulusan", 
-            ["Keimanan dan ketaqwaan", "Kewargaan", "Penalaran kritis", "Kreativitas", "Kolaborasi", "Kemandirian", "Kesehatan", "Komunikasi"])
+        doc.add_paragraph("\n" + st.session_state['hasil_rpm'])
         
+        # Tanda Tangan
+        doc.add_paragraph(f"\n\n{tgl_cetak}")
+        ttd = doc.add_table(rows=1, cols=2)
+        ttd.cell(0,0).text = f"Mengetahui,\nKepala Sekolah\n\n\n\n{kepsek}\nNIP. {nip_k}"
+        ttd.cell(0,1).text = f"Guru Mata Pelajaran\n\n\n\n{guru}\nNIP. {nip_g}"
+        
+        out = BytesIO()
+        doc.save(out)
+        return out.getvalue()
+
     st.divider()
-    tujuan_pemb = st.text_area("Tujuan Pembelajaran (Input awal)")
-    disiplin_ilmu = st.text_input("Disiplin Ilmu")
-    kemitraan = st.text_input("Kemitraan Pembelajaran")
-    lingkungan = st.text_input("Lingkungan Pembelajaran")
-    digital = st.text_input("Pemanfaatan Digital")
-    sarpras = st.text_area("Sarana Dan Prasarana")
-    tanggal_buat = st.date_input("Tanggal Pembuatan", datetime.date.today())
-
-    submitted = st.form_submit_button("Generate RPM via AI")
-
-# --- LOGIKA GENERATOR (SIMULASI AI) ---
-def generate_rpm_content(data):
-    # Di sini Anda biasanya memanggil API OpenAI/Claude. 
-    # Sebagai contoh, saya buatkan struktur string berdasarkan input.
-    
-    content = f"""
-    1. IDENTIFIKASI
-    A. Peserta Didik
-    - Aspek Kognitif: Mampu memahami konsep {data['materi']} dengan level HOTS.
-    - Aspek Sikap: Menunjukkan dimensi {', '.join(data['dimensi'])}.
-    - Aspek Keterampilan: Terampil dalam praktik {data['mapel']}.
-    B. Materi: {data['materi']}
-    C. Dimensi Lulusan: {', '.join(data['dimensi'])}
-
-    2. DESAIN PEMBELAJARAN
-    A. CP: {data['cp_fase']}
-    B. Tujuan (ABCD): Melalui model {data['model_pemb']}, peserta didik (A) mampu mendemonstrasikan (B) materi {data['materi']} (C) dengan tepat (D).
-    C. Disiplin Ilmu: {data['disiplin_ilmu']}
-    D. Praktik Pedagogis: Pendekatan {data['pendekatan']}, Model {data['model_pemb']}
-    E. Kemitraan: {data['kemitraan']}
-    ... (dan seterusnya sesuai output yang diminta)
-    """
-    return content
-
-# --- FUNGSI DOWNLOAD WORD ---
-def create_word(content, data):
-    doc = Document()
-    doc.add_heading('RENCANA PEMBELAJARAN MENDALAM (RPM)', 0)
-    doc.add_paragraph(f"Satuan Pendidikan: {data['satuan_pendidikan']}")
-    doc.add_paragraph(content)
-    
-    # Footer Tanda Tangan
-    table = doc.add_table(rows=1, cols=2)
-    left_cell = table.rows[0].cells[0]
-    right_cell = table.rows[0].cells[1]
-    
-    left_cell.text = f"\n\nMengetahui,\nKepala Sekolah\n\n\n\n{data['nama_kepsek']}\nNIP. {data['nip_kepsek']}"
-    right_cell.text = f"{data['tgl']}\nGuru Mata Pelajaran\n\n\n\n{data['nama_guru']}\nNIP. {data['nip_guru']}"
-    
-    bio = BytesIO()
-    doc.save(bio)
-    return bio.getvalue()
-
-# --- DISPLAY HASIL ---
-if submitted:
-    st.info("AI sedang menyusun RPM terstruktur... (Sintak model & Asesmen sedang dibuat)")
-    
-    # Gabungkan data input
-    form_data = {
-        "satuan_pendidikan": satuan_pendidikan, "nama_guru": nama_guru, "nip_guru": nip_guru,
-        "nama_kepsek": nama_kepsek, "nip_kepsek": "123456789", # contoh
-        "dimensi": dimensi, "materi": materi, "model_pemb": model_pemb,
-        "cp_fase": cp_fase, "tgl": tanggal_buat, "mapel": mapel, "disiplin_ilmu": disiplin_ilmu,
-        "kemitraan": kemitraan, "pendekatan": pendekatan
-    }
-    
-    # Eksekusi Generator
-    hasil_generate = generate_rpm_content(form_data)
-    
-    st.subheader("📄 Hasil Generate RPM")
-    st.text_area("Draft Hasil (Bisa Disalin)", hasil_generate, height=400)
-    
-    # Tombol Unduh
-    col_dl1, col_dl2, col_dl3 = st.columns(3)
-    
-    word_file = create_word(hasil_generate, form_data)
+    col_dl1, col_dl2 = st.columns(2)
     with col_dl1:
-        st.download_button("📥 Unduh .DOCX (Word)", data=word_file, file_name="RPM_Sekolah.docx")
-    
+        st.download_button("📩 Download Word (.docx)", data=buat_docx(), file_name=f"RPM_{mapel}.docx")
     with col_dl2:
-        st.button("📋 Salin Teks (Klik Kanan Copy)")
-
-    # Riwayat Download (Simulasi)
-    if 'history' not in st.session_state:
-        st.session_state['history'] = []
-    st.session_state['history'].append(f"RPM_{mapel}_{tanggal_buat}.docx")
-
-st.sidebar.header("📂 Hasil Download-an (Sesi Ini)")
-for h in st.session_state.get('history', []):
-    st.sidebar.write(f"✅ {h}")
+        st.button("📋 Salin Semua Teks")
+    
+    st.success("RPM Berhasil dibuat! Silakan download file di atas.")
