@@ -1,2 +1,4 @@
-google-generativeai
 streamlit
+python-docx
+pandas
+openai
